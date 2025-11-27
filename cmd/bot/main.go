@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 
@@ -53,7 +54,7 @@ func runMigrations(cfg *config.Config) error {
 	}
 
 	// Выполняем миграцию
-	if err := goose.Run(command, db, "migrations"); err != nil {
+	if err := goose.RunContext(context.Background(), command, db, "migrations"); err != nil {
 		return err
 	}
 
