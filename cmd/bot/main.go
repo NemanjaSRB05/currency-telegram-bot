@@ -12,52 +12,57 @@ import (
 )
 
 func main() {
+	log.Println("🎯 BOT MAIN STARTED")
+
 	// Загружаем конфигурацию
+	log.Println("📋 Loading configuration...")
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		log.Fatalf("❌ Failed to load config: %v", err)
 	}
+	log.Println("✅ Configuration loaded")
 
 	// Инициализируем логгер
+	log.Println("📝 Initializing logger...")
 	if err := logger.InitGlobal(cfg.LogLevel); err != nil {
-		log.Fatalf("Failed to initialize logger: %v", err)
+		log.Fatalf("❌ Failed to initialize logger: %v", err)
 	}
+	logger.S.Info("✅ Logger initialized")
 
 	// Обработка команды миграций
 	if len(os.Args) > 1 && os.Args[1] == "migrate" {
+		logger.S.Info("🔄 Running migrations...")
 		if err := runMigrations(cfg); err != nil {
-			logger.S.Fatalf("Migration failed: %v", err)
+			logger.S.Fatalf("❌ Migration failed: %v", err)
 		}
+		logger.S.Info("✅ Migrations completed")
 		return
 	}
 
 	// Создаем и запускаем приложение
+	logger.S.Info("🚀 Creating application...")
 	application := app.New(cfg)
+
+	logger.S.Info("🎯 Starting application...")
 	if err := application.Run(); err != nil {
-		logger.S.Errorf("Application failed: %v", err)
+		logger.S.Errorf("❌ Application failed: %v", err)
 		os.Exit(1)
 	}
 }
 
-// runMigrations выполняет миграции базы данных
 func runMigrations(cfg *config.Config) error {
+	logger.S.Infof("🔗 Connecting to database: %s", cfg.DBURL[:30]+"...")
 	db, err := goose.OpenDBWithDriver("postgres", cfg.DBURL)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 
-	// Получаем команду миграции (по умолчанию - up)
 	command := "up"
 	if len(os.Args) > 2 {
 		command = os.Args[2]
 	}
 
-	// Выполняем миграцию
-	if err := goose.RunContext(context.Background(), command, db, "migrations"); err != nil {
-		return err
-	}
-
-	logger.S.Info("Migrations completed successfully")
-	return nil
+	logger.S.Infof("🔄 Running migration command: %s", command)
+	return goose.RunContext(context.Background(), command, db, "migrations")
 }

@@ -1,16 +1,26 @@
 #!/bin/bash
 set -e
 
-echo "🚀 Starting Currency Telegram Bot..."
+echo "🚀 ===== STARTING BOT ====="
+echo "📁 Current directory: $(pwd)"
+echo "📁 Files in directory:"
+ls -la
 
-# Делаем бинарник исполняемым (на всякий случай)
-chmod +x ./bot
+echo "🔧 Building application..."
+go build -o bot ./cmd/bot
+ls -la bot
 
-# Выполняем миграции
+echo "✅ Binary built successfully"
+chmod +x bot
+
+echo "🗃️ Checking database..."
 if [ -n "$DB_URL" ]; then
-    echo "📦 Running database migrations..."
+    echo "📦 DB_URL is set, running migrations..."
     ./bot migrate
+else
+    echo "❌ DB_URL is NOT set!"
 fi
 
-echo "🤖 Starting bot..."
+echo "🤖 Starting bot application..."
+# Запускаем с подробным выводом
 exec ./bot
