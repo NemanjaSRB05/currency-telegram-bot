@@ -1,8 +1,6 @@
-version: '3.8'
-
 services:
   postgres:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -17,6 +15,17 @@ services:
       timeout: 5s
       retries: 5
 
+  migrations:
+    build: .
+    command: migrate
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN}
+      DB_URL: "postgres://postgres:postgres@postgres:5432/currency_bot?sslmode=disable"
+      LOG_LEVEL: "debug"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   bot:
     build: .
     environment:
@@ -25,8 +34,7 @@ services:
       LOG_LEVEL: "debug"
       CACHE_TTL_MINUTES: "5"
     depends_on:
-      postgres:
-        condition: service_healthy
+      - migrations
     restart: unless-stopped
 
 volumes:
