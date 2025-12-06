@@ -11,7 +11,7 @@ import (
 )
 
 type MockExchangeProvider struct {
-	mock.Mock
+	mock.Mock // ← Наследуем от mock.Mock
 }
 
 func (m *MockExchangeProvider) GetRate(ctx context.Context, from, to string) (float64, error) {
