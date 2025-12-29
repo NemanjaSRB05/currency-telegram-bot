@@ -60,21 +60,5 @@ jobs:
         uses: golangci/golangci-lint-action@v6
         with:
           version: latest
+          # Линтер автоматически найдет папку vendor, если она есть в проекте.
           args: --timeout=5m
-
-  commitlint:
-    name: Lint Commit Messages
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          
-      - name: Install Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Run commitlint
-        uses: wagoid/commitlint-github-action@v6

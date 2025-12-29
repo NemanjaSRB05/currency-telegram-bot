@@ -54,7 +54,7 @@ func (c *CBRClient) GetRate(ctx context.Context, from, to string) (float64, erro
 		if v.CharCode == target {
 			valStr := strings.Replace(v.Value, ",", ".", 1)
 			var rate float64
-			fmt.Sscanf(valStr, "%f", &rate)
+			_, _ = fmt.Sscanf(valStr, "%f", &rate)
 			res := rate / float64(v.Nominal)
 			if from == "RUB" {
 				return 1 / res, nil

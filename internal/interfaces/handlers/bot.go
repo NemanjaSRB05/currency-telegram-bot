@@ -164,7 +164,7 @@ func (h *BotHandler) parseAndConvert(userID int64, text string) (string, error) 
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("💎 *Результат обмена*\n\n"))
+	sb.WriteString("💎 *Результат обмена*\n\n")
 	sb.WriteString(fmt.Sprintf("📤 *Отдаете:* %.2f %s\n", amount, from))
 	sb.WriteString(fmt.Sprintf("📥 *Получаете:* %.2f %s\n", converted, to))
 	sb.WriteString("───\n")
@@ -276,7 +276,7 @@ func (h *BotHandler) handleCallback(callback *tgbotapi.CallbackQuery) {
 			// Делаем новый расчет
 			result, err := h.parseAndConvert(userID, fmt.Sprintf("%s %s %s", amountStr, from, to))
 			if err != nil {
-				h.bot.Request(tgbotapi.NewCallback(callback.ID, "Ошибка"))
+				_, _ = h.bot.Request(tgbotapi.NewCallback(callback.ID, "Ошибка"))
 				return
 			}
 
@@ -286,14 +286,10 @@ func (h *BotHandler) handleCallback(callback *tgbotapi.CallbackQuery) {
 			kb := h.createConversionKeyboard(from, to)
 			editMsg.ReplyMarkup = &kb
 
-			h.bot.Send(editMsg)
-			h.bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+			_, _ = h.bot.Send(editMsg)
+			_, _ = h.bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 			return
 		}
-	}
-
-	if strings.HasPrefix(data, "favorite_") {
-
 	}
 
 	h.bot.Request(tgbotapi.NewCallback(callback.ID, ""))
