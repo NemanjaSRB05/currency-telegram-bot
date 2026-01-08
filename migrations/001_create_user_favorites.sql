@@ -6,7 +6,7 @@ CREATE TABLE user_favorites (
     to_currency VARCHAR(3) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     
-    -- Уникальный constraint чтобы один пользователь не мог добавить одну пару дважды
+    
     UNIQUE(user_id, from_currency, to_currency)
 );
 

@@ -15,7 +15,7 @@ type Config struct {
 }
 
 func Load() (*Config, error) {
-	// Только окружение! Файл .env НЕ читаем
+
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 

@@ -68,7 +68,7 @@ func (a *App) initServices() (*handlers.BotHandler, error) {
 
 	// Инициализируем провайдеры курсов валют
 	providers := []services.ExchangeProvider{
-		exchangeratehost.New(), // Убедитесь, что метод GetName реализован в этом провайдере
+		exchangeratehost.New(),
 		cbr.New(),
 	}
 

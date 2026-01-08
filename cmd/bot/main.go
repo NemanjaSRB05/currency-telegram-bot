@@ -57,8 +57,6 @@ func runMigrations(cfg *config.Config) error {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
 
-	// Указываем папку, где лежит ваш файл 001_create_user_favorites.sql
-	// В Docker она должна быть скопирована в корень или рядом с исполняемым файлом
 	migrationDir := "migrations"
 
 	if err := goose.RunContext(context.Background(), "up", db, migrationDir); err != nil {

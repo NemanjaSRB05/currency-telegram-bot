@@ -115,7 +115,8 @@ func (h *BotHandler) handleText(message *tgbotapi.Message) {
 	parts := strings.Fields(strings.ReplaceAll(cleanText, "/", " "))
 	var currs []string
 	for _, p := range parts {
-		if len(p) == 3 {
+
+		if _, err := strconv.ParseFloat(p, 64); err != nil && len(p) == 3 {
 			currs = append(currs, p)
 		}
 	}
@@ -131,40 +132,43 @@ func (h *BotHandler) handleText(message *tgbotapi.Message) {
 }
 
 // parseAndConvert парсит и выполняет конвертацию
-func (h *BotHandler) parseAndConvert(userID int64, text string) (string, error) {
+func (h *BotHandler) parseAndConvert(_ int64, text string) (string, error) {
 	ctx := context.Background()
-
-	// Очистка: в верхний регистр, запятые в точки
 	text = strings.ToUpper(strings.TrimSpace(text))
+	text = strings.ReplaceAll(text, "/", " ")
 	text = strings.ReplaceAll(text, ",", ".")
 
-	// Разбиваем строку на части по пробелам и слэшам
-	parts := strings.Fields(strings.ReplaceAll(text, "/", " "))
-
+	parts := strings.Fields(text)
 	var amount float64 = 1
 	var currencies []string
 
 	for _, p := range parts {
 		if val, err := strconv.ParseFloat(p, 64); err == nil {
 			amount = val
-		} else if len(p) == 3 {
-			currencies = append(currencies, p)
+		} else {
+			// Очищаем слово от лишних символов и проверяем длину
+			cleanCurr := strings.TrimFunc(p, func(r rune) bool {
+				return !((r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z'))
+			})
+			// Валюта в ISO формате всегда 3 символа (USD, RUB, EUR)
+			if len(cleanCurr) == 3 {
+				currencies = append(currencies, cleanCurr)
+			}
 		}
 	}
 
 	if len(currencies) < 2 {
-		return "", fmt.Errorf("укажите две валюты, например: `100 USD RUB`")
+		return "", fmt.Errorf("нужно 2 валюты (напр. USD RUB)")
 	}
 
 	from, to := currencies[0], currencies[1]
-
 	converted, err := h.exchangeService.ConvertAmount(ctx, amount, from, to)
 	if err != nil {
 		return "", err
 	}
 
 	var sb strings.Builder
-	sb.WriteString("💎 *Результат обмена*\n\n")
+	sb.WriteString("💎 *Результат обмена*\n\n") // Ошибка S1039 исправлена (убран fmt.Sprintf)
 	sb.WriteString(fmt.Sprintf("📤 *Отдаете:* %.2f %s\n", amount, from))
 	sb.WriteString(fmt.Sprintf("📥 *Получаете:* %.2f %s\n", converted, to))
 	sb.WriteString("───\n")
@@ -196,32 +200,46 @@ func (h *BotHandler) handleHelp(message *tgbotapi.Message) {
 
 // handleFavorites показывает избранное пользователя
 func (h *BotHandler) handleFavorites(message *tgbotapi.Message) {
+	userID := message.Chat.ID
 	ctx := context.Background()
-	favorites, err := h.favoritesRepo.GetUserFavorites(ctx, message.Chat.ID)
+
+	// 1. Получаем список избранного из базы
+	favorites, err := h.favoritesRepo.GetUserFavorites(ctx, userID)
 	if err != nil {
-		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Ошибка при загрузке избранного")
-		h.sendMessage(msg)
+		log.Printf("Error getting favorites: %v", err)
+		h.sendMessage(tgbotapi.NewMessage(userID, "❌ Не удалось загрузить список избранного."))
 		return
 	}
 
+	// 2. Если список пуст
 	if len(favorites) == 0 {
-		msg := tgbotapi.NewMessage(message.Chat.ID, "⭐ У вас пока нет избранных пар валют.\n\nДобавьте их с помощью команды:\n/fav_USD_EUR")
+		msg := tgbotapi.NewMessage(userID, "🌟 У вас пока нет избранных пар.\n\nЧтобы добавить, отправьте команду: `/fav_USD_RUB` или воспользуйтесь кнопкой «В избранное» после конвертации.")
+		msg.ParseMode = "Markdown"
 		h.sendMessage(msg)
 		return
 	}
 
-	var favoritePairs []string
+	// 3. Формируем кнопки динамически
+	var rows [][]tgbotapi.InlineKeyboardButton
 	for _, fav := range favorites {
-		favoritePairs = append(favoritePairs, fmt.Sprintf("%s/%s", fav.FromCurrency, fav.ToCurrency))
+		pairText := fmt.Sprintf("%s/%s", fav.FromCurrency, fav.ToCurrency)
+
+		// Создаем строку из двух кнопок:
+		// Первая кнопка — сама пара (при нажатии сработает как текст "USD/RUB")
+		// Вторая кнопка — корзина (триггерит удаление через callback)
+		row := tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(pairText, pairText),
+			tgbotapi.NewInlineKeyboardButtonData("🗑️", fmt.Sprintf("remfav_%s_%s", fav.FromCurrency, fav.ToCurrency)),
+		)
+		rows = append(rows, row)
 	}
 
-	msg := tgbotapi.NewMessage(message.Chat.ID, "⭐ Ваши избранные пары:")
-	h.sendMessage(msg)
+	// 4. Отправляем сообщение с клавиатурой
+	msg := tgbotapi.NewMessage(userID, "⭐ *Ваши избранные пары:*\nНажмите на пару для быстрого расчета или на корзину для удаления.")
+	msg.ParseMode = "Markdown"
+	msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(rows...)
 
-	// Отправляем инлайн-клавиатуру с избранными парами
-	keyboardMsg := tgbotapi.NewMessage(message.Chat.ID, "Выберите пару для конвертации:")
-	keyboardMsg.ReplyMarkup = telegram.CreateInlineKeyboard(favoritePairs)
-	h.sendMessage(keyboardMsg)
+	h.sendMessage(msg)
 }
 
 func (h *BotHandler) handleRates(message *tgbotapi.Message) {
@@ -265,22 +283,50 @@ func (h *BotHandler) handleCallback(callback *tgbotapi.CallbackQuery) {
 	userID := callback.Message.Chat.ID
 	messageID := callback.Message.MessageID
 
-	// Обработка кнопок конвертации (префикс conv_)
+	// 1. ОБРАБОТКА ИЗБРАННОГО
+	if strings.Contains(data, "/") {
+		// Отрезаем технические префиксы, если они есть (например, "FAVORITE_")
+		cleanData := data
+		if idx := strings.Index(data, "_"); idx != -1 && !strings.HasPrefix(data, "conv_") {
+			// Если в данных есть "_" и это не кнопка конвертации, берем всё, что после "_"
+			// Например: "FAVORITE_USD/RUB" -> "USD/RUB"
+			cleanData = data[idx+1:]
+		}
+
+		result, err := h.parseAndConvert(userID, cleanData)
+		if err != nil {
+			_, _ = h.bot.Request(tgbotapi.NewCallback(callback.ID, "❌ "+err.Error()))
+			return
+		}
+
+		msg := tgbotapi.NewMessage(userID, result)
+		msg.ParseMode = "Markdown"
+
+		// Создаем кнопки для очищенной пары
+		parts := strings.Split(cleanData, "/")
+		if len(parts) == 2 {
+			msg.ReplyMarkup = h.createConversionKeyboard(parts[0], parts[1])
+		}
+
+		h.sendMessage(msg)
+		_, _ = h.bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+		return
+	}
+
+	// 2. ОБРАБОТКА КНОПОК КОНВЕРТАЦИИ (префикс conv_)
 	if strings.HasPrefix(data, "conv_") {
-		parts := strings.Split(data, "_") // conv, amount, from, to
+		parts := strings.Split(data, "_")
 		if len(parts) == 4 {
 			amountStr := parts[1]
 			from := parts[2]
 			to := parts[3]
 
-			// Делаем новый расчет
 			result, err := h.parseAndConvert(userID, fmt.Sprintf("%s %s %s", amountStr, from, to))
 			if err != nil {
 				_, _ = h.bot.Request(tgbotapi.NewCallback(callback.ID, "Ошибка"))
 				return
 			}
 
-			// Редактируем сообщение
 			editMsg := tgbotapi.NewEditMessageText(userID, messageID, result)
 			editMsg.ParseMode = "Markdown"
 			kb := h.createConversionKeyboard(from, to)
@@ -292,7 +338,54 @@ func (h *BotHandler) handleCallback(callback *tgbotapi.CallbackQuery) {
 		}
 	}
 
-	h.bot.Request(tgbotapi.NewCallback(callback.ID, ""))
+	// 3. ОБРАБОТКА ДОБАВЛЕНИЯ В ИЗБРАННОЕ (префикс addfav_)
+	if strings.HasPrefix(data, "addfav_") {
+		parts := strings.Split(data, "_")
+		if len(parts) == 3 {
+			from := parts[1]
+			to := parts[2]
+			ctx := context.Background()
+
+			// Используем уже существующий репозиторий для сохранения
+			err := h.favoritesRepo.AddFavorite(ctx, userID, from, to)
+
+			var callbackText string
+			if err != nil {
+				callbackText = "❌ Ошибка при сохранении"
+			} else {
+				callbackText = fmt.Sprintf("✅ Пара %s/%s добавлена в избранное!", from, to)
+			}
+
+			// Отправляем ответ на callback, который покажется как уведомление сверху
+			callbackCfg := tgbotapi.NewCallback(callback.ID, callbackText)
+			_, _ = h.bot.Request(callbackCfg)
+			return
+		}
+	}
+
+	// ОБРАБОТКА УДАЛЕНИЯ (remfav_FROM_TO)
+	if strings.HasPrefix(data, "remfav_") {
+		parts := strings.Split(data, "_")
+		if len(parts) == 3 {
+			from, to := parts[1], parts[2]
+
+			err := h.favoritesRepo.RemoveFavorite(context.Background(), userID, from, to)
+
+			var text string
+			if err != nil {
+				text = "❌ Ошибка при удалении"
+			} else {
+				text = fmt.Sprintf("🗑️ %s/%s удалено из избранного", from, to)
+			}
+
+			// Отправляем уведомление (всплывающее сверху)
+			callbackCfg := tgbotapi.NewCallback(callback.ID, text)
+			_, _ = h.bot.Request(callbackCfg)
+			return
+		}
+	}
+
+	_, _ = h.bot.Request(tgbotapi.NewCallback(callback.ID, ""))
 }
 
 // sendMessage отправляет сообщение с обработкой ошибок
@@ -351,6 +444,10 @@ func (h *BotHandler) createConversionKeyboard(from, to string) tgbotapi.InlineKe
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("🔄 Обратный курс ("+to+"/"+from+")", fmt.Sprintf("conv_1_%s_%s", to, from)),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("⭐ Добавить "+from+"/"+to+" в избранное", fmt.Sprintf("addfav_%s_%s", from, to)),
+			tgbotapi.NewInlineKeyboardButtonData("🗑️ Удалить", fmt.Sprintf("remfav_%s_%s", from, to)),
 		),
 	)
 }
